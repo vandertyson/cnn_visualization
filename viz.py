@@ -3,11 +3,13 @@ import cv2
 from keras import backend as K
 from utils import *
 from model import *
-from unet import get_unet
+from unet import get_unet, preprocess
 import argparse
 import rasterio
 import os
 #Define regularizations:
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
 def blur_regularization(img, grads, size = (3, 3)):
     return cv2.blur(img, size)
 
@@ -63,7 +65,7 @@ def visualize_filter(input_img, filter_index, img_placeholder, number_of_iterati
     print("Done with filter", filter_index)
     return img
 
-def layer_to_visualize(img_to_visualize, layer, save_path, size):
+def layer_to_visualize(img_to_visualize, layer, save_path, size, trained=False):
     inputs = [K.learning_phase()] + model.inputs
 
     _convout1_f = K.function(inputs, [layer])
@@ -78,11 +80,16 @@ def layer_to_visualize(img_to_visualize, layer, save_path, size):
 
     # n = convolutions.shape[0]
     # n = int(np.ceil(np.sqrt(n)))
-    directory = './%s'%save_path
+    if trained:
+        directory = './trained/%s'%save_path
+    else:
+        directory = './untrained/%s'%save_path
+    print(convolutions[0].shape)
+    print(convolutions[0]*255)
     if not os.path.exists(directory):
         os.makedirs(directory)
-    for i in range(len(convolutions)):
-        cv2.imwrite(os.path.join(directory, 'conv_%d.png' % i), convolutions[i])
+    for i in range(len(convolutions)):   
+        cv2.imwrite(os.path.join(directory, 'conv_%d.png' % i), convolutions[i]*255.0)
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -96,8 +103,11 @@ def get_args():
     parser.add_argument("--channel", type = int, default = 3, help = 'Image channel')
     parser.add_argument("--conv_size", type = int, default = 256, help = 'Filter Image size ')
     parser.add_argument("--conv_path", type = str, default = './', help = 'Filter Image directory ')
+    parser.add_argument("--trained", type = int, default = 1, help = 'Filter Image directory ')
     args = parser.parse_args()
     return args
+
+
 
 if __name__ == "__main__":
 
@@ -115,8 +125,9 @@ if __name__ == "__main__":
 
     # model = get_model(first_layer)
     model = get_unet(args.channel)
-    # model = load_model_weights(model, args.weights_path)
-    model.load_weights(args.weights_path)
+    if args.trained:
+        # model = load_model_weights(model, args.weights_path)
+        model.load_weights(args.weights_path)
 
     layer_name = args.layer
     if not args.layer:
@@ -133,11 +144,9 @@ if __name__ == "__main__":
         # we start from a gray image with some random noise
         init_img = np.random.random((1, args.channel, img_width, img_height)) * 20 + 128.
     else:
-        with rasterio.open(args.img, 'r') as f:
-            values = f.read().astype(np.float32)            
-            init_img = [values]
+        init_img = preprocess(args.img, args.channel)
 
-    layer_to_visualize(init_img, layer, layer_name, args.conv_size)
+    layer_to_visualize(init_img, layer, layer_name, args.conv_size, args.trained)
 
     # vizualizations = [None] * len(filter_indexes)
     # for i, index in enumerate(filter_indexes):

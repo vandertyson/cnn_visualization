@@ -9,6 +9,8 @@ from keras.layers import (
     Input, Convolution2D, MaxPooling2D, UpSampling2D,
     Reshape, core, Dropout,
     Activation, BatchNormalization)
+import rasterio
+import numpy as np
 
 K.set_image_dim_ordering("th")
 
@@ -75,3 +77,38 @@ def jaccard_coef_int(y_true, y_pred):
     sum_ = K.sum(y_true + y_pred_pos, axis=[0, -1, -2])
     jac = (intersection + smooth) / (sum_ - intersection + smooth)
     return K.mean(jac)
+
+BAND_CUT_3 = {
+    0: {'max': 224.0, 'min': 44.0}
+    , 1: {'max': 217.0, 'min': 64.0}
+    , 2: {'max': 204.0, 'min': 67.0}
+}
+
+BAND_CUT_8 = {
+    0: {'max': 224.0, 'min': 44.0}
+    , 1: {'max': 217.0, 'min': 64.0}
+    , 2: {'max': 204.0, 'min': 67.0}
+    , 3: {'max': 171.0, 'min': 5.0}
+    , 4: {'max': 100.0, 'min': 4.0}
+    , 5: {'max': 100.0, 'min': 4.0}
+    , 6: {'max': 71.0, 'min': 15.0}
+    , 7: {'max': 150.0, 'min': 3.0}
+}
+
+
+def preprocess(img_path, channel):
+    X_val = []
+    x_mean=np.load('xmean_%d.npy'%channel)    
+    if channel == 3:
+        bandcut = BAND_CUT_3
+    else:
+        bandcut = BAND_CUT_8        
+    with rasterio.open(img_path, 'r') as f:            
+        values = f.read().astype(np.float32)            
+        for chan_i in range(channel):
+            min_val = bandcut[chan_i]['min']
+            max_val = bandcut[chan_i]['max']
+            values[chan_i] = np.clip(values[chan_i], min_val, max_val)
+            values[chan_i] = (values[chan_i] - min_val) / (max_val - min_val)
+        X_val.append(values)
+    return np.array(X_val) - x_mean
